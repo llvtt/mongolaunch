@@ -17,7 +17,13 @@
 
 ## Installation
 
-Coming soon!
+1. Clone this repository:
+
+        git clone https://github.com/lovett89/mongolaunch.git
+
+2. Install with `setup.py`:
+
+        python setup.py install
 
 ## Usage
 
@@ -94,6 +100,6 @@ The most basic usage need not specify any options.
 
 ## Related Work
 
-[`mlaunch`](https://github.com/rueckstiess/mtools/wiki/mlaunch), part of [`mtools`](https://github.com/rueckstiess/mtools) by , provides an easy way to start MongoDB clusters all on one machine.
+[`mlaunch`](https://github.com/rueckstiess/mtools/wiki/mlaunch), part of [`mtools`](https://github.com/rueckstiess/mtools) by @rueckstiess, provides an easy way to start MongoDB clusters all on one machine.
 
-[`m`](https://github.com/aheckmann/m) is a version manager for MongoDB.
+[`m`](https://github.com/aheckmann/m) by @aheckmann is a version manager for MongoDB.
