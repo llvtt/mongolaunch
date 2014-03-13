@@ -1,0 +1,6 @@
+# python
+*.pyc
+*.pyo
+
+# misc
+.swp_emacs
