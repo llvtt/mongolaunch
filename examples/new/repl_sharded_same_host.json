@@ -1,0 +1,82 @@
+{
+    "configuration_title": "Replica Set Shard on Cluster on Same Host on AWS",
+
+    "instances": [
+        {
+            "_id": "cluster",
+
+            "ami": "ami-a43909e1",
+            "type": "t1.micro"
+        }
+    ],
+
+    "mongo": [
+        {
+            "_id": "shard0_rs0",
+
+            "bin": "mongod",
+            "version": "2.4.9",
+
+            "options": "--noprealloc --nojournal --replSet shard0",
+            "dbpath": "/data/db0",
+            "logpath": "/var/log/mongod0.log",
+
+            "instance": "cluster"
+        },
+        {
+            "_id": "shard0_rs1",
+
+            "bin": "mongod",
+            "version": "2.4.9",
+
+            "options": "--noprealloc --nojournal --replSet shard0",
+            "dbpath": "/data/db1",
+            "logpath": "/var/log/mongod1.log",
+
+            "instance": "cluster"
+        },
+        {
+            "_id": "shard0_rs2",
+
+            "bin": "mongod",
+            "version": "2.4.9",
+
+            "options": "--noprealloc --nojournal --replSet shard0",
+            "dbpath": "/data/db2",
+            "logpath": "/var/log/mongod2.log",
+
+            "instance": "cluster"
+        },
+        {
+            "_id": "mongos",
+
+            "bin": "mongos",
+            "version": "2.4.9",
+
+            "logpath": "/var/log/mongos.log",
+
+            "instance": "cluster",
+
+            "single_configdb": true,
+            "configdb_version": "2.4.9"
+        }
+    ],
+
+    "replicas": [
+        {
+            "_id": "shard0",
+            
+            "members": ["shard0_rs0", "shard0_rs1", "shard0_rs2"],
+            "name": "shard0"
+        }
+    ],
+
+    "clusters": [
+        {
+            "_id": "cluster0",
+            
+            "shards": ["shard0"],
+            "mongos": "mongos"
+        }
+    ]
+}

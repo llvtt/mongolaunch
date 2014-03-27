@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
-import datetime
+import itertools
 import json
 import os
 import os.path
@@ -17,10 +17,8 @@ from mongolaunch import errors
 from mongolaunch.settings import (
     ML_PATH,
     CONFIG_AMI,
-    CONFIG_BOOTSTRAP
+    MAX_MONGO_TRIES
 )
-from mongolaunch.shellscript import (build_context,
-                                     script_from_config)
 import mongolaunch.models
 
 # Configurables defined as globals up here for now
@@ -33,9 +31,6 @@ def main():
     parser.add_argument(type=str, dest="key_name", help="key pair name")
     parser.add_argument("--config", type=str, dest="config_filename",
                         default="config.json", help="JSON configuration file")
-    parser.add_argument("--expiration-days", type=int, dest="days",
-                        default=7, help="Number of days to set "
-                        "in expire-on tag")
     parser.add_argument("--security-group", type=str, dest="sec_group", help=
                         "security group name", default="mongolaunch")
     parser.add_argument("--region", type=str, dest="region", help="AWS region",
@@ -46,17 +41,20 @@ def main():
     parser.add_argument("--secret-key", type=str, dest="secret", help=
                         "AWS secret key. This can be omitted if AWS_SECRET_KEY "
                         "is defined in your environment", default=None)
+    parser.add_argument("-t", "--tag", type=str, dest="tags", action="append",
+                        help="Add a tag with --tag key=value or --tag tagname",
+                        default=[])
     parser.add_argument("--access-key", type=str, dest="access", help=
                         "AWS access key. This can be omitted if AWS_ACCESS_KEY "
                         "is defined in your environment", default=None)
 
     args = parser.parse_args()
     region = args.region
-    days = args.days
     sec_group = args.sec_group
     key_name = args.key_name
     secret = args.secret or os.environ.get("AWS_SECRET_KEY")
     access = args.access or os.environ.get("AWS_ACCESS_KEY")
+    tags = args.tags
     instance_type = args.instance_type
     config_filename = args.config_filename
 
@@ -107,208 +105,216 @@ def main():
         rules = [
             ('tcp', 22, 22, CIDR_ADDRESS),            # SSH
             ('tcp', 3389, 3389, CIDR_ADDRESS),        # RDP
-            ('tcp', 27017, 27017, CIDR_ADDRESS),      # MongoDB
-            ('tcp', 27018, 27018, CIDR_ADDRESS),      # MongoDB
-            ('tcp', 27019, 27019, CIDR_ADDRESS)       # MongoDB
+            ('tcp', 10000, 50000, CIDR_ADDRESS),      # Some ports for MongoDB
         ]
         g = conn.create_security_group(sec_group, "mongolaunch security group")
         for rule in rules:
             g.authorize(*rule)
 
     #
-    # Launch EC2 instances
+    # Create Host models
     #
 
-    def _launch_instance(**kwargs):
-        reservation = conn.run_instances(**kwargs)
-        inst = reservation.instances[0]
-        inst.add_tag('expire-on',
-                     (datetime.datetime.now() +
-                      datetime.timedelta(days=days)).strftime("%Y-%m-%d"))
-        inst.add_tag('source', 'mongolaunch')
-        return inst
+    # mapping of host _id to Host instance
+    hosts = {}
 
-    instances = []
-    for to_start in config['instances']:
-        ami = to_start['ami']
-        try:
+    # EC2
+    for to_start in config.get('instances', []):
+        model = mongolaunch.models.Instance(
+            id=to_start['_id'],
+            conn=conn,
+            ami=to_start['ami'],
+            keypair=key_name,
+            group=sec_group,
+            instance_type=to_start.get("type", instance_type)
+        )
+        hosts[to_start['_id']] = model
 
-            is_mongos = (to_start['mongo']['bin'] == 'mongos')
-            # Start additional instance for config server if using mongos
-            if is_mongos:
-                print("starting config server instance...")
-                inst = _launch_instance(
-                    image_id=CONFIG_AMI,
-                    key_name=key_name,
-                    security_groups=[sec_group],
-                    instance_type=instance_type,
-                    user_data=CONFIG_BOOTSTRAP
-                )
+    # own machines
+    for to_start in config.get('hosts', []):
+        model = mongolaunch.models.OwnMachine(
+            id=to_start['_id'],
+            hostname=to_start['hostname'],
+            passwd=to_start['root']
+        )
+        hosts[to_start['_id']] = model
+
+    #
+    # Create models of Mongo processes
+    #
+
+    # next available port #
+    # this is somewhat dependent on security group rules
+    available_port = itertools.count(27017)
+
+    mongoes = {}
+    for mongo in config['mongo']:
+        configdbs = []
+        if mongo['bin'].lower() == 'mongos':
+            # Create config server(s)
+            for i in range(1 if mongo['single_configdb'] else 3):
                 configdb = mongolaunch.models.Mongod(
-                    None, inst.id, conn, port=27019)
-                instances.append(configdb)
-                # We have to wait for the config server to get a DNS name
-                # so we can plug it into the mongos bootstrap script
-                configdb.wait_for_running()
+                    port=next(available_port),
+                    config={
+                        "version": mongo['configdb_version'],
+                        "options": "--configsvr ",
+                        "bin": "mongod",
+                        # TODO: don't hard-code --logpath and --dbpath on
+                        # config servers
+                        "dbpath": "/data/configdb",
+                        "logpath": "/var/log/configdb.log"
+                    })
+                configdbs.append(configdb)
 
-                # configdb needs to have mongod already available, or else
-                # mongos won't start
-                configdb.wait_for_available()
-
-            # Start main mongod/mongos instance
-            print("starting instance %s..." % to_start['_id'])
-
-            # Build bootstrap script based on AMI and config file
-            img = conn.get_image(ami)
-            if is_mongos:
-                to_start['configdb'] = configdb.hostname()
-            context = build_context(config, to_start)
-            script_contents = script_from_config(
-                context,
-                windows=(img.platform == 'windows')
+            model = mongolaunch.models.Mongos(
+                config=mongo,
+                configdbs=configdbs,
+                port=mongo.get("port", next(available_port))
             )
-
-            # Use install script as user data
-            inst = _launch_instance(
-                image_id=ami,
-                key_name=key_name,
-                security_groups=[sec_group],
-                instance_type=instance_type,
-                user_data=script_contents
+            # N.B. 'configdbs' are not in this mapping, since there is
+            # no config id
+            mongoes[mongo['_id']] = model
+        elif mongo['bin'].lower() == 'mongod':
+            model = mongolaunch.models.Mongod(
+                config=mongo,
+                port=mongo.get("port", next(available_port))
             )
-            if is_mongos:
-                instances.append(mongolaunch.models.Mongos(
-                    to_start,
-                    inst.id,
-                    configdb,
-                    conn
-                ))
+            mongoes[mongo['_id']] = model
+
+        # Attach mongo process model to appropriate Host model
+        host_id = mongo.get("instance") or mongo.get("host")
+        host = hosts.get(host_id)
+        if host is None:
+            raise errors.MLConfigurationError(
+                "no host %s found for %s!" % (host_id, mongo['_id']))
+        host.add_mongo(model)
+
+    #
+    # Create models of replicas
+    #
+
+    replicas = {}
+    for rs in config.get("replicas", []):
+        member_ids = rs['members']
+        model = mongolaunch.models.ReplicaSet(
+            members=[mongoes[k] for k in member_ids],
+            config=rs
+        )
+        replicas[rs['_id']] = model
+
+    #
+    # Create models of sharded clusters
+    #
+
+    sharded = {}
+    for sh in config.get("clusters", []):
+        shard_ids = sh['shards']
+        mongos = mongoes.get(sh['mongos'])
+        shards = [mongoes.get(k, replicas.get(k)) for k in shard_ids]
+        model = mongolaunch.models.ShardedCluster(mongos=mongos, shards=shards)
+
+        # Determine if the configdbs should run on the same Host as the Mongos,
+        # or different. If any of the shards are not on the same Host as the
+        # Mongos, then so must the config servers
+        #
+        #TODO: should same_host just check the .host property?
+        def same_host(mongos, shard):
+            host = lambda m: m.config.get("host", m.config.get("instance"))
+            if hasattr(shard, 'members'):
+                # ReplicaSet
+                return all((host(m) == host(mongos)) for m in shard.members)
+            # Standalone
+            return host(mongos) == host(shard)
+
+        # Assign Hosts to config server Mongods
+        for i, configdb in enumerate(mongos.configdbs):
+            if all(same_host(mongos, shard) for shard in shards):
+                # Config servers must live on Mongos Host
+                print("Putting configs on same host as mongoS!")
+                mongos.host.add_mongo(configdb)
             else:
-                # Check if we're a shard
-                instances.append(mongolaunch.models.Mongod(
-                    to_start,
-                    inst.id,
-                    conn
-                ))
+                print("Putting configs on separate host from mongoS!")
+                # Config servers must live on other EC2 Instances
+                new_instance = mongolaunch.models.Instance(
+                    id="config%d" % i,
+                    conn=conn,
+                    ami=CONFIG_AMI,
+                    keypair=key_name,
+                    group=sec_group,
+                    instance_type=instance_type
+                )
+                new_instance.add_mongo(configdb)
 
-        except BotoServerError:
-            print("A problem ocurred while starting your instance.")
-            # TODO: cleanup instances that did manage to start
-            raise
-
-    #
-    # Save instances launched to .mongolaunchrc
-    #
-
-    with open(os.path.join(ML_PATH, ".mongolaunchrc"), "w") as fd:
-        pickle.dump([inst.id for inst in instances], fd)
-
-    #
-    # Wait for instances to be 'running'
-    #
-
-    for inst in instances:
-        inst.wait_for_running()
+            # # Have to start config servers here, so we can get the hostnames
+            # # and add to --configdb on mongos
+            # print("Starting config DBs!")
+            # configdb.start()
+        sharded[sh['_id']] = model
 
     #
-    # Configure clusters
+    # Configure replica sets
     #
 
-    clusters = config.get("clusters") or []
-    replicas = (c for c in clusters if c['type'].lower() == 'replicaset')
-    sharded = (c for c in clusters if c['type'].lower() == 'shardedcluster')
-    for rs in replicas:
-        # EC2 Instances that will be in the replica set
-        rs_instances = [i for i in instances if i.config_id() in rs['members']]
-
-        # DNS names for those instances
-        hosts = [inst.hostname() for inst in rs_instances]
-
-        # try to connect to the hosts
-        for inst in rs_instances:
-            inst.wait_for_available()
-
-        # initialize the replica set
-        print("Initializing replica set...")
-        # connect to 1 host
-        client = pymongo.MongoClient(rs_instances[0].hostname())
-        member_list = [{"_id": i, "host": h} for i, h in enumerate(hosts)]
-        client.admin.command("replSetInitiate", {
-            "_id": rs["name"],
-            "members": member_list
-        })
-        client.close()
-
-    for sh in sharded:
-        # members is list of standalone ids/replica set ids
-        members = sh['members']
-        # Mapping of json config _ids to instances
-        config_ids = dict((inst.config_id(), inst) for inst in instances)
-        # Shards that are standalones (i.e., single EC2 Instances)
-        cluster_instances = []
-        # Shards that are replica sets (and consist of multiple Instances)
-        cluster_repls = []
-        for m in members:
-            if m in config_ids:
-                cluster_instances.append(config_ids[m])
-            else:
-                cluster_repls.append(m)
-
-        hosts = [inst.hostname() for inst in cluster_instances]
-
-        # Find host of the mongos
-        mongos_id = sh["mongos"]
-        mongos = config_ids[mongos_id]
-
-        print("Initializing sharded cluster...")
-        print("Waiting for mongos")
-        mongos.wait_for_available()
-        client = pymongo.MongoClient(mongos.hostname())
-        print("adding shards")
-
-        # Add standalone mongods as shards
-        for inst in cluster_instances:
-            # TODO: allow additional configurations here
-            # http://docs.mongodb.org/manual/reference/command/addShard/#dbcmd.addShard
-            # Shards may not be available yet
-            inst.wait_for_available()
-            print("adding shard %s..." % inst.hostname())
-            client.admin.command({"addShard": inst.hostname()})
-
-        # Add replica sets as shards
-        for rsid in cluster_repls:
-            for c in clusters:
-                # Is this the config for the rs we're looking for?
-                rs_members = []
-                rs_instances = []
-                if c.get("_id") == rsid:
-                    # Get the members
-                    rs_members = c.get("members")
-                # Find the individual configs for these rs members
-                rs_instances = [
-                    i for i in instances if i.config_id() in rs_members
-                ]
-                if len(rs_instances) > 0:
-                    shard_string = "%s/%s" % (
-                        c.get("name"),
-                        ",".join(i.hostname() for i in rs_instances)
-                    )
-                    print("adding shard %s..." % shard_string)
-                    client.admin.command({"addShard": shard_string})
+    for rsid, rs in replicas.items():
+        print("Configuring replica set %s..." % rsid)
+        rs.start()
+        # Need to wait for replica set to come up
+        member = rs.members[0]
+        client = pymongo.MongoClient(member.host.hostname(), port=member.port)
+        is_master = client.admin.command("isMaster")
+        # Wait for primary to become available
+        counter = 0
+        while is_master.get("primary") is None and counter < MAX_MONGO_TRIES:
+            print("Waiting for a primary to be elected for %s... %d" % (
+                rsid, counter))
+            counter += 1
+            time.sleep(1)
+            is_master = client.admin.command("isMaster")
+        if is_master.get("primary") is None:
+            raise errors.MLConnectionError("Replica set %s could not elect a "
+                                           "primary in a reasonable amount of "
+                                           "time. Abandoning setup.")
         client.close()
 
     #
-    # Make sure all instances are available
+    # Configure sharded clusters
     #
 
-    for inst in instances:
-        inst.wait_for_available()
+    for shclid, shcl in sharded.items():
+        print("Configuring sharded cluster %s..." % shclid)
+        shcl.start()
+        # Don't need to wait for this to come up, but perhaps should
+        # for consistency?
+
+    # DEBUG
+    print(str(replicas))
+    print(str(sharded))
+    print(str(mongoes))
+
+    #
+    # Initialize standalone instances
+    #
+
+    for mongoid, mongo in mongoes.items():
+        if not mongo.available():
+            print("Initializing %s" % mongoid)
+            mongo.start()
+
+    #
+    # Print out results
+    #
 
     print("")
     print("Done. Setup took %f seconds" % (time.time() - start_time))
-    print("Started the following instances:")
-    for inst in instances:
-        print("%s\t%s" % (inst.config_id() or "<configdb>", inst.hostname()))
+    print("Started the following mongo processes:")
+    for mongoid, mongo in mongoes.items():
+        print("%s\t%s:%d" % (mongoid, mongo.host.hostname(), mongo.port))
+        if isinstance(mongo, mongolaunch.models.Mongos):
+            for cdb in mongo.configdbs:
+                print("%s\t%s:%d" % (cdb.host.id,
+                                     cdb.host.hostname(),
+                                     cdb.port))
+
 
 if __name__ == '__main__':
     main()

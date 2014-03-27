@@ -1,19 +1,8 @@
-<powershell>
-# Download MongoDB
-$webClient = New-Object System.Net.WebClient
-$webClient.DownloadFile("http://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2008plus-{{ version }}.zip", "C:\Users\Administrator\Desktop\mongodb.zip")
-
-# Extract zip file to Administrator Desktop
-$shell = New-Object -com shell.application
-$Desktop = $shell.namespace("C:\Users\Administrator\Desktop")
-$ZipFolder = $shell.namespace("C:\Users\Administrator\Desktop\mongodb.zip")
-$Desktop.Copyhere($ZipFolder.items())
-
-# Create dbpath = c:\data\db
-# You may need to change this if you provide a different --dbpath in your config file
-md C:\data\db
+# Dbpath
+md {{ dbpath }}
 # Logpath
-md C:\logs
+$logdir = (Split-Path -Path {{ logpath }})
+md $logdir
 
 # Firewall rules allowing mongod, mongos, and the mongo shell
 netsh advfirewall firewall add rule name="Allowing mongod" dir=in action=allow program="C:\Users\Administrator\Desktop\mongodb-win32-x86_64-2008plus-{{ version }}\bin\mongod.exe"
@@ -22,10 +11,8 @@ netsh advfirewall firewall add rule name="Allowing mongo shell" dir=in action=al
 
 # Add mongo executable as a service + start it
 if ("{{ bin }}" -eq "mongos") {
-  C:\Users\Administrator\Desktop\mongodb-win32-x86_64-2008plus-{{ version }}\bin\{{ bin }} --configdb {{ configdb }} --logpath C:\logs\mongos.log {{ options }} --install
-  net start MongoS
+    C:\Users\Administrator\Desktop\mongodb-win32-x86_64-2008plus-{{ version }}\bin\{{ bin }} --configdb {{ configdb }} --logpath {{ logpath }} {{ options }} --serviceName {{ _id }} --serviceDisplayName {{ _id }} --install
 } else {
-  C:\Users\Administrator\Desktop\mongodb-win32-x86_64-2008plus-{{ version }}\bin\{{ bin }} --logpath C:\logs\mongod.log {{ options }} --install
-  net start MongoDB
+    C:\Users\Administrator\Desktop\mongodb-win32-x86_64-2008plus-{{ version }}\bin\{{ bin }} --logpath {{ logpath }} --dbpath {{ dbpath }} {{ options }} --serviceName {{ _id }} --serviceDisplayName {{ _id }} --install
 }
-</powershell>
+net start {{ _id }}

@@ -1,0 +1,51 @@
+{
+    "configuration_title": "Simple sharded example",
+
+    "instances": [
+        {
+            "_id": "shard0_inst",
+
+            "ami": "ami-a43909e1",
+            "type": "t1.micro"
+        },
+        {
+            "_id": "mongos_inst",
+
+            "ami": "ami-a43909e1",
+            "type": "t1.micro"
+        }
+    ],
+
+    "mongo": [
+        {
+            "_id": "shard0",
+
+            "bin": "mongod",
+            "options": "--noprealloc --nojournal --logpath /var/log/mongod.log --dbpath /data/db",
+            "version": "2.4.9",
+
+            "instance": "shard0_inst"
+        },
+        {
+            "_id": "mongos",
+
+            "bin": "mongos",
+            "options": "--logpath /var/log/mongos.log",
+            "version": "2.4.9",
+
+            "instance": "mongos_inst",
+
+            "single_configdb": true,
+            "configdb_version": "2.4.9"
+        }
+    ],
+
+    "clusters": [
+        {
+            "_id": "cluster0",
+            
+            "shards": ["shard0"],
+            "mongos": "mongos"
+        }
+    ]
+}

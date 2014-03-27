@@ -1,15 +1,8 @@
-#!/bin/sh
-#
-# install-linux.sh
-# Installs MongoDB on linux
-#
-# This script will run as root at the instance's first boot
-
-cd /home/ec2-user
-curl http://fastdl.mongodb.org/linux/mongodb-linux-x86_64-{{ version }}.tgz | tar xzv
-mkdir -p /data/db
+mkdir -p {{ dbpath }}
+mkdir -p $(dirname {{ logpath }})
+echo "installing with options {{ options }}"
 if [ "{{ bin }}" = "mongos" ]; then
-    mongodb-linux-x86_64-{{ version }}/bin/{{ bin }} --configdb {{ configdb }} {{ options }} --logpath /var/log/mongos.log --fork
+    /opt/mongolaunch/mongodb-linux-x86_64-{{ version }}/bin/{{ bin }} --logpath {{ logpath }} --configdb "{{ configdb }}" {{ options }}  --fork
 else
-    mongodb-linux-x86_64-{{ version }}/bin/{{ bin }} {{ options }} --logpath /var/log/mongod.log --fork
+    /opt/mongolaunch/mongodb-linux-x86_64-{{ version }}/bin/{{ bin }} --dbpath {{ dbpath }} --logpath {{ logpath }} {{ options }} --fork
 fi

@@ -16,6 +16,16 @@ def _make_substitutions(template, context):
     return re.sub(patt, repl, template)
 
 
+def get_script(template_name, context, windows=False):
+    template = "%s-%s" % (
+        template_name,
+        "windows.ps1" if windows else "linux.sh"
+    )
+    with open(os.path.join(ML_PATH, "shell", template), 'rb') as fd:
+        return _format_newlines(_make_substitutions(fd.read(), context),
+                                windows=windows)
+
+
 def script_from_config(context, windows=False):
     '''Provide a shell script that bootstraps the instance described in
     <context> with MongoDB
