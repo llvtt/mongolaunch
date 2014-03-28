@@ -307,11 +307,6 @@ def main():
         # Don't need to wait for this to come up, but perhaps should
         # for consistency?
 
-    # DEBUG
-    print(str(replicas))
-    print(str(sharded))
-    print(str(mongoes))
-
     #
     # Initialize standalone instances
     #

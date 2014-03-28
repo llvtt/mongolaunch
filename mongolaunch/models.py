@@ -366,7 +366,7 @@ class Mongos(Mongod):
 
     def start(self):
         for configdb in self.configdbs:
-            print("STARTING CONFIGDB ON PORT %d" % configdb.port)
+            print("Starting configdb on port %d" % configdb.port)
             print(configdb.config)
             configdb.start()
         # Get --configdb string
@@ -452,9 +452,9 @@ class ShardedCluster(Cluster):
 
     def start(self):
         if not self._initialized:
-            print("STARTING MONGOS!!!!")
+            print("Starting Mongos!!!!")
             self.mongos.start()
-            print("STARTING SHARDS!!!!")
+            print("Starting Shards!!!!")
             for sh in self.shards:
                 sh.start()
             client = MongoClient(self.mongos.host.hostname(),
