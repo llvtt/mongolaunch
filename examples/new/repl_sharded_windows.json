@@ -1,0 +1,69 @@
+{
+    "configuration_title": "Sharded cluster with one replica set shard on one AWS Windows Host",
+
+    "instances": [
+        {
+            "_id": "cluster",
+
+            "ami": "ami-c2cef187",
+            "type": "t1.micro"
+        }
+    ],
+
+    "mongo": [
+        {
+            "_id": "shard0_rs0",
+
+            "bin": "mongod",
+            "version": "2.4.9",
+
+            "options": "--noprealloc --nojournal --replSet replicaset",
+            "dbpath": "C:\\mongodb\\data0",
+            "logpath": "C:\\mongodb\\logs\\mongod0.log",
+
+            "instance": "cluster"
+        },
+        {
+            "_id": "shard0_rs1",
+
+            "bin": "mongod",
+            "version": "2.4.9",
+
+            "options": "--noprealloc --nojournal --replSet replicaset",
+            "dbpath": "C:\\mongodb\\data1",
+            "logpath": "C:\\mongodb\\logs\\mongod1.log",
+
+            "instance": "cluster"
+        },
+        {
+            "_id": "mongos",
+
+            "bin": "mongos",
+            "version": "2.4.9",
+
+            "logpath": "C:\\mongodb\\logs\\mongos.log",
+
+            "instance": "cluster",
+
+            "single_configdb": true,
+            "configdb_version": "2.4.9"
+        }
+    ],
+
+    "replicas": [
+        {
+            "_id": "replicaset",
+            "members": ["shard0_rs0", "shard0_rs1"],
+            "name": "replicaset"
+        }
+    ],
+
+    "clusters": [
+        {
+            "_id": "cluster0",
+            
+            "shards": ["replicaset"],
+            "mongos": "mongos"
+        }
+    ]
+}

@@ -1,0 +1,27 @@
+{
+    "configuration_title": "Single-node Windows Example",
+
+    "instances": [
+        {
+            "_id": "windows",
+
+            "ami": "ami-c2cef187",
+            "type": "t1.micro"
+        }
+    ],
+
+    "mongo": [
+        {
+            "_id": "windows_mongod",
+
+            "bin": "mongod",
+            "options": "--noprealloc --nojournal",
+            "logpath": "C:\\mongodb\\logs\\mongod.log",
+            "dbpath": "C:\\mongodb\\data",
+            "version": "2.4.9",
+
+            "instance": "windows"
+        }
+    ]
+
+}

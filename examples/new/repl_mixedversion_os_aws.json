@@ -1,0 +1,71 @@
+{
+    "configuration_title": "Simple sharded example",
+
+    "instances": [
+        {
+            "_id": "rs0_inst",
+
+            "__comment__": "windows",
+            "ami": "ami-c2cef187",
+            "type": "t1.micro"
+        },
+        {
+            "_id": "rs1_inst",
+
+            "ami": "ami-c2cef187",
+            "type": "t1.micro"
+        },
+        {
+            "_id": "rs2_inst",
+
+            "ami": "ami-c2cef187",
+            "type": "t1.micro"
+        }
+    ],
+
+    "mongo": [
+        {
+            "_id": "rs0",
+
+            "bin": "mongod",
+            "options": "--noprealloc --nojournal --replSet replset",
+            "logpath": "C:\\mongodb\\logs\\mongodb0.log",
+            "dbpath": "C:\\mongodb\\data0",
+            "version": "2.4.9",
+
+            "instance": "rs0_inst"
+        },
+        {
+            "_id": "rs1",
+
+            "bin": "mongod",
+            "options": "--noprealloc --nojournal --replSet replset",
+            "logpath": "C:\\mongodb\\logs\\mongodb1.log",
+            "dbpath": "C:\\mongodb\\data1",
+            "version": "2.6.0-rc0",
+
+            "instance": "rs1_inst"
+        },
+        {
+            "_id": "rs2",
+
+            "bin": "mongod",
+            "options": "--noprealloc --nojournal --replSet replset",
+            "logpath": "C:\\mongodb\\logs\\mongodb2.log",
+            "dbpath": "C:\\mongodb\\data2",
+            "version": "2.4.9",
+
+            "instance": "rs2_inst"
+        }
+    ],
+
+
+    "replicas": [
+        {
+            "_id": "replset",
+            "members": ["rs0", "rs1", "rs2"],
+            "name": "replset"
+        }
+    ]
+
+}

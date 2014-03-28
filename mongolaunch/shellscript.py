@@ -12,7 +12,7 @@ WINDOWS_INSTALL = "install-windows.ps1"
 def _make_substitutions(template, context):
     patt = '(%s)' % '|'.join(('{{\s*%s\s*}}' % k) for k in context.keys())
     # remove {{ and }} from key (must be at beginning/end of match)
-    repl = lambda m: context.get(m.group(0)[2:][:-2].strip()) or ""
+    repl = lambda m: context.get(m.group(0)[2:][:-2].strip(), "")
     return re.sub(patt, repl, template)
 
 

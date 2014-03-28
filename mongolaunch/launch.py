@@ -35,6 +35,8 @@ def main():
                         "security group name", default="mongolaunch")
     parser.add_argument("--region", type=str, dest="region", help="AWS region",
                         default="us-west-1")
+    parser.add_argument("-z", "--availability-zone", dest='zone',
+                        action='store', default=None, help="availability zone")
     parser.add_argument("--instance-type", type=str, dest="instance_type",
                         default="t1.micro", help="EC2 instance type. Defaults "
                         "to t1.micro")
@@ -55,6 +57,7 @@ def main():
     secret = args.secret or os.environ.get("AWS_SECRET_KEY")
     access = args.access or os.environ.get("AWS_ACCESS_KEY")
     tags = args.tags
+    zone = args.zone
     instance_type = args.instance_type
     config_filename = args.config_filename
 
@@ -153,16 +156,20 @@ def main():
         if mongo['bin'].lower() == 'mongos':
             # Create config server(s)
             for i in range(1 if mongo['single_configdb'] else 3):
+                config_port = next(available_port)
                 configdb = mongolaunch.models.Mongod(
-                    port=next(available_port),
+                    port=config_port,
                     config={
                         "version": mongo['configdb_version'],
                         "options": "--configsvr ",
                         "bin": "mongod",
-                        # TODO: don't hard-code --logpath and --dbpath on
-                        # config servers
-                        "dbpath": "/data/configdb",
-                        "logpath": "/var/log/configdb.log"
+                        # TODO: don't hard-code --logpath and --dbpath
+                        # on config servers. Using config_port as part
+                        # of file name, to prevent 3 config servers on
+                        # same host from clobbering each other
+                        "dbpath": "/data/configdb-%d" % config_port,
+                        "logpath": "/var/log/configdb-%d.log" % config_port,
+                        "_id": "config%d" % config_port
                     })
                 configdbs.append(configdb)
 
@@ -236,7 +243,7 @@ def main():
                 print("Putting configs on separate host from mongoS!")
                 # Config servers must live on other EC2 Instances
                 new_instance = mongolaunch.models.Instance(
-                    id="config%d" % i,
+                    id="config%d_inst" % i,
                     conn=conn,
                     ami=CONFIG_AMI,
                     keypair=key_name,

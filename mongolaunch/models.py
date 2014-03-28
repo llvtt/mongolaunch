@@ -160,18 +160,17 @@ class Instance(Host):
 
         # Scripts for mongod first, then mongos
         for mongo in mongoD + mongoS:
-            # Download MongoDB
-            download = get_script("download-mongodb",
-                                  mongo.config,
-                                  windows=self._is_windows)
-            # Install MongoDB
-            install = get_script("install", mongo.config,
-                                 windows=self._is_windows)
-            script.append(download)
-            script.append(install)
+            bootstrap = get_script("install-mongodb",
+                                   mongo.config,
+                                   windows=self._is_windows)
+            script.append(bootstrap)
 
+        if self._is_windows:
+            script_text = ("<powershell>\r\n%s\r\n</powershell>"
+                           % "\r\n".join(script))
+        else:
+            script_text = "\n".join(script)
         # DEBUG
-        script_text = ("\r\n" if self._is_windows else "\n").join(script)
         print(script_text)
         return script_text
 
@@ -290,7 +289,6 @@ class Mongod(MongoProcess):
             self.config['dbpath'] = '/data/db'
         if 'logpath' not in self.config:
             self.config['logpath'] = '/var/log/mongod.log'
-        print "config options are now: %s" % config['options']
         Mongo.__init__(self)
 
     def available(self):
