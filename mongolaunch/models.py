@@ -168,11 +168,7 @@ class Instance(Host):
         '''Helper method that provides the bootstrap script for the Instance'''
         script = []
 
-        ############ TODO: Clean this up
-        # If mongoS + any other part of the sharded cluster is on this instance,
-        # they all should use "localhost" as their hostname.
-        #
-        #TODO: Something similar probably needs to happen for replica sets?
+        # TODO: may be a better way to do this
         mongoD = []
         mongoS = []
         for mongo in self.mongoes:
@@ -181,6 +177,8 @@ class Instance(Host):
             elif isinstance(mongo, Mongod):
                 mongoD.append(mongo)
 
+        # Check if configs are on same host as mongos. If so, use 'localhost' as
+        # hostname for config servers, instead of external hostname
         for m in mongoS:
             use_localhost = False
             for cdb in m.configdbs:
@@ -192,7 +190,7 @@ class Instance(Host):
                 m.config['configdb'] = ",".join("localhost:%d" % cdb.port
                                                 for cdb in m.configdbs)
 
-        # Scripts for mongod first, then mongos
+        # Get scripts for mongod (potentally config servers) first, then mongos
         for mongo in mongoD + mongoS:
             bootstrap = get_script("install-mongodb",
                                    mongo.config,
@@ -223,6 +221,7 @@ class Instance(Host):
                           datetime.timedelta(days=7)).strftime("%Y-%m-%d"))
             inst.add_tag('owner', '%s@%s' % (getpass.getuser(),
                                              socket.gethostname()))
+            inst.add_tag('name', self.id)
             inst.add_tag('source', 'mongolaunch')
             self._instance_id = inst.id
             self._initialized = True
