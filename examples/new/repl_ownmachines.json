@@ -1,0 +1,61 @@
+{
+    "configuration_title": "2-node replica set not on EC2",
+
+    "hosts": [
+        {
+            "_id": "host0",
+
+            "__comment__0": "needs to be resolvable hostname or IP address",
+            "address": "10.5.28.223",
+
+            "__comment__1": "are you going to make me do windows?",
+            "windows": false,
+
+            "__comment__2": [
+                "credentials for doing setup.",
+                "must have sudo privileges.",
+                "sudo must not require a password"],
+            "user": "mongolaunch",
+            "password": "mongolaunch"
+        },
+        {
+            "_id": "host1",
+            "address": "10.5.30.233",
+            "user": "mongolaunch",
+            "password": "mongolaunch"
+        }
+    ],
+
+    "mongo": [
+        {
+            "_id": "rs0",
+            
+            "bin": "mongod",
+            "version": "2.4.9",
+            "options": "--noprealloc --nojournal --replSet replset",
+            "dbpath": "/data/db/rs0",
+            "logpath": "/var/log/mongod_rs0.log",
+
+            "host": "host0"
+        },
+        {
+            "_id": "rs1",
+            
+            "bin": "mongod",
+            "version": "2.4.9",
+            "options": "--noprealloc --nojournal --replSet replset",
+            "dbpath": "/data/db/rs1",
+            "logpath": "/var/log/mongod_rs1.log",
+
+            "host": "host1"
+        }
+    ],
+
+    "replicas": [
+        {
+            "_id": "replset",
+            "members": ["rs0", "rs1"],
+            "name": "replset"
+        }
+    ]
+}

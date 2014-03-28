@@ -28,9 +28,12 @@ CIDR_ADDRESS = "0.0.0.0/0"
 def main():
     parser = argparse.ArgumentParser(
         description="Launch EC2 MongoDB configurations")
-    parser.add_argument(type=str, dest="key_name", help="key pair name")
+    parser.add_argument("--key-name", type=str, dest="key_name", default=None,
+                        help="key pair name")
     parser.add_argument("--config", type=str, dest="config_filename",
                         default="config.json", help="JSON configuration file")
+    parser.add_argument("--start-port", type=int, dest="port", default=27017,
+                        help="starting port for mongo processes")
     parser.add_argument("--security-group", type=str, dest="sec_group", help=
                         "security group name", default="mongolaunch")
     parser.add_argument("--region", type=str, dest="region", help="AWS region",
@@ -56,6 +59,10 @@ def main():
     key_name = args.key_name
     secret = args.secret or os.environ.get("AWS_SECRET_KEY")
     access = args.access or os.environ.get("AWS_ACCESS_KEY")
+    start_port = args.port
+    if start_port < 0 or start_port > 65535:
+        raise errors.MLConfigurationError(
+            "--start-port out of range: %d" % start_port)
     tags = args.tags
     zone = args.zone
     instance_type = args.instance_type
@@ -93,26 +100,29 @@ def main():
     # Get or create KeyPair
     #
 
-    if not key_name in (kp.name for kp in conn.get_all_key_pairs()):
-        print("keypair %s does not yet exist. Creating it..." % key_name)
-        keypair = conn.create_key_pair(key_name)
-        keypair.save(ML_PATH)
+    if key_name is not None:
+        if not key_name in (kp.name for kp in conn.get_all_key_pairs()):
+            print("keypair %s does not yet exist. Creating it..." % key_name)
+            keypair = conn.create_key_pair(key_name)
+            keypair.save(ML_PATH)
 
     #
     # Get or create security group
     #
 
-    if not sec_group in (g.name for g in conn.get_all_security_groups()):
-        print("security group %s does not yet exist. Creating it..."
-              % sec_group)
-        rules = [
-            ('tcp', 22, 22, CIDR_ADDRESS),            # SSH
-            ('tcp', 3389, 3389, CIDR_ADDRESS),        # RDP
-            ('tcp', 10000, 50000, CIDR_ADDRESS),      # Some ports for MongoDB
-        ]
-        g = conn.create_security_group(sec_group, "mongolaunch security group")
-        for rule in rules:
-            g.authorize(*rule)
+    if sec_group is not None:
+        if not sec_group in (g.name for g in conn.get_all_security_groups()):
+            print("security group %s does not yet exist. Creating it..."
+                  % sec_group)
+            rules = [
+                ('tcp', 22, 22, CIDR_ADDRESS),          # SSH
+                ('tcp', 3389, 3389, CIDR_ADDRESS),      # RDP
+                ('tcp', 10000, 50000, CIDR_ADDRESS),    # Some ports for MongoDB
+            ]
+            g = conn.create_security_group(sec_group,
+                                           "mongolaunch security group")
+            for rule in rules:
+                g.authorize(*rule)
 
     #
     # Create Host models
@@ -123,6 +133,12 @@ def main():
 
     # EC2
     for to_start in config.get('instances', []):
+        # TODO: isolate this kind of logic, and do all config file
+        # validation at once
+        if key_name is None:
+            raise errors.MLConfigurationError(
+                "Config file %s has EC2 instances, but no key was provided. "
+                "Abandoning setup." % config_filename)
         model = mongolaunch.models.Instance(
             id=to_start['_id'],
             conn=conn,
@@ -150,7 +166,7 @@ def main():
 
     # next available port #
     # this is somewhat dependent on security group rules
-    available_port = itertools.count(27017)
+    available_port = itertools.count(start_port)
 
     mongoes = {}
     for mongo in config['mongo']:

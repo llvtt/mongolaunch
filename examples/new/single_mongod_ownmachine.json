@@ -1,0 +1,34 @@
+{
+    "configuration_title": "Single MongoD not on EC2",
+
+    "hosts": [
+        {
+            "_id": "myhost",
+
+            "__comment__0": "needs to be resolvable hostname or IP address",
+            "address": "10.5.28.223",
+
+            "__comment__1": "are you going to make me do windows?",
+            "windows": false,
+
+            "__comment__2": [
+                "credentials for doing setup.",
+                "must have sudo privileges.",
+                "sudo must not require a password"],
+            "user": "mongolaunch",
+            "password": "mongolaunch"
+        }
+    ],
+
+    "mongo": [
+        {
+            "_id": "standalone_process",
+            
+            "bin": "mongod",
+            "version": "2.4.9",
+            "options": "--noprealloc --nojournal",
+
+            "host": "myhost"
+        }
+    ]
+}
