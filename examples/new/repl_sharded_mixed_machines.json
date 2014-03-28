@@ -1,0 +1,73 @@
+{
+    "configuration_title": "2-shard replica set, one shard on physical machine, one on EC2",
+
+    "instances": [
+        {
+            "_id": "shard1_inst",
+            "ami": "ami-a43909e1",
+            "type": "t1.micro"
+        }
+    ],
+
+    "hosts": [
+        {
+            "_id": "shard0_host",
+            "address": "10.5.28.223",
+
+            "user": "mongolaunch",
+            "password": "mongolaunch"
+        },
+        {
+            "_id": "mongos_host",
+            "address": "10.5.30.233",
+
+            "user": "mongolaunch",
+            "password": "mongolaunch"
+        }
+    ],
+
+    "mongo": [
+        {
+            "_id": "shard0",
+            
+            "bin": "mongod",
+            "version": "2.4.9",
+            "options": "",
+            "dbpath": "/data/db/shard0",
+            "logpath": "/var/log/mongod_shard0.log",
+
+            "host": "shard0_host"
+        },
+        {
+            "_id": "shard1",
+            
+            "bin": "mongod",
+            "version": "2.4.9",
+            "options": "",
+            "dbpath": "/data/db/shard1",
+            "logpath": "/var/log/mongod_shard1.log",
+
+            "instance": "shard1_inst"
+        },
+        {
+            "_id": "mongos",
+
+            "bin": "mongos",
+            "version": "2.6.0-rc1",
+            "options": "",
+            "logpath": "/var/log/mongos.log",
+            "host": "mongos_host",
+
+            "single_configdb": true,
+            "configdb_version": "2.6.0-rc1"
+        }
+    ],
+
+    "clusters": [
+        {
+            "_id": "cluster",
+            "shards": ["shard0", "shard1"],
+            "mongos": "mongos"
+        }
+    ]
+}
