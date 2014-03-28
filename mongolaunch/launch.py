@@ -137,8 +137,10 @@ def main():
     for to_start in config.get('hosts', []):
         model = mongolaunch.models.OwnMachine(
             id=to_start['_id'],
-            hostname=to_start['hostname'],
-            passwd=to_start['root']
+            address=to_start['address'],
+            user=to_start['user'],
+            passwd=to_start['password'],
+            windows=to_start.get("windows", False)
         )
         hosts[to_start['_id']] = model
 
@@ -252,10 +254,6 @@ def main():
                 )
                 new_instance.add_mongo(configdb)
 
-            # # Have to start config servers here, so we can get the hostnames
-            # # and add to --configdb on mongos
-            # print("Starting config DBs!")
-            # configdb.start()
         sharded[sh['_id']] = model
 
     #

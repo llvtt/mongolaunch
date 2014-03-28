@@ -1,11 +1,11 @@
 import datetime
 import getpass
-import os
 import socket
 import time
 
-from fabric.api import env, run
+from fabric.api import env
 from fabric.tasks import execute
+from fabric.operations import sudo
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from mongolaunch import errors, settings
@@ -43,6 +43,9 @@ class Host(object):
         '''
         raise NotImplementedError
 
+    def is_windows(self):
+        raise NotImplementedError
+
     def reboot(self):
         '''Reboots the host'''
         raise NotImplementedError
@@ -68,23 +71,51 @@ class Host(object):
 class OwnMachine(Host):
     '''Class for machines not in EC2'''
 
-    def __init__(self, id, hostname, passwd):
-        self._hostname = hostname
+    def __init__(self, id, address, user, passwd, windows=False):
+        self._address = address
+        self._user = user
         self._passwd = passwd
+        self._is_windows = windows
+        self._initialized = False
+        self._host_string = '%s@%s:22' % (self._user, self.hostname())
+
+        # append to fabric environment
+        env.passwords[self._host_string] = self._passwd
+
         Host.__init__(self, id)
 
+    def is_windows(self):
+        return self._is_windows
+
+    def _get_bootstrap_script(self):
+        script = []
+        for mongo in self.mongoes:
+            # not worrying about windows, since we assume SSH capacity
+            install = get_script("install-mongodb", mongo.config)
+            script.append(install)
+        # Not worrying about \r\n versus \n here, see above comment
+        return "\n".join(script)
+
     def initialize(self):
-        # do nothing
-        pass
+        def _initialize():
+            sudo(self._get_bootstrap_script())
+        if not self._initialized:
+            execute(_initialize, hosts=[self._host_string])
+            self._initialized = True
+        return self._initialized
 
     def hostname(self):
-        return self._hostname
+        return self._address
 
     def running(self):
+        if not self._initialized:
+            return False
+
         def try_connect():
-            run("touch .hello")
+            sudo("touch .hello")
+            sudo("rm .hello")
         try:
-            execute(try_connect, hosts=[self.hostname()])
+            execute(try_connect, hosts=[self._host_string])
             return True
         except:
             return False
@@ -129,6 +160,9 @@ class Instance(Host):
         self._type = instance_type
         self._instance_id = None
         Host.__init__(self, id)
+
+    def is_windows(self):
+        return self._is_windows
 
     def _get_bootstrap_script(self):
         '''Helper method that provides the bootstrap script for the Instance'''
